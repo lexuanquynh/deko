@@ -3,7 +3,9 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/test/bufconn"
 	"io"
+	"net"
 	"sync"
 
 	pb "github.com/dev-saw99/deko/proto"
@@ -18,14 +20,27 @@ type Compiler struct {
 	Client pb.CompileServiceClient
 }
 
+var ln *bufconn.Listener
+
+func init() {
+	ln = bufconn.Listen(1024 * 1024)
+}
+
 func (c *Compiler) Init() {
 	utils.Logger.Infow("Connecting with DekoBridge Service",
 		"port", c.DNS)
-	conn, err := grpc.Dial(c.DNS, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		utils.Logger.Fatalw("Can't connect with server",
-			"error", err)
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+			return ln.Dial()
+		}),
 	}
+
+	conn, err := grpc.NewClient(c.DNS, dialOpts...)
+	if err != nil {
+		utils.Logger.Fatalw("Can't connect with server", "error", err)
+	}
+
 	c.Client = pb.NewCompileServiceClient(conn)
 }
 
